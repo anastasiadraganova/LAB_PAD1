@@ -1,0 +1,23 @@
+# torch ставить ПЕРВЫМ под свою CUDA, напр. для RTX 50xx (Blackwell):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+torch>=2.7
+# --- grabber / preprocessing ---
+requests>=2.32
+tenacity>=9.0
+beautifulsoup4>=4.12
+lxml>=5.0
+pyyaml>=6.0
+python-dotenv>=1.0
+tqdm>=4.66
+# --- embeddings / vector store / retrieval ---
+transformers>=4.44
+qdrant-client>=1.12
+rank-bm25>=0.2.2
+numpy>=1.26
+# --- генерация: Groq и Gemini через OpenAI-совместимый HTTP API (requests) ---
+# --- интерфейс ---
+streamlit>=1.40
+# --- evaluation / experiments / report ---
+matplotlib>=3.9
+python-docx>=1.1
+pytest>=8.0

@@ -1,0 +1,5 @@
+tag,correctness,faithfulness,relevancy,answered_ok,refused_ok,cited_share,latency,prompt_tokens
+gpt-oss-120b/strict,4.92,4.8667,5.0,1.0,0.8,1.0,4.959,1055.9667
+gpt-oss-120b/basic,4.92,4.2,4.96,1.0,0.0,0.12,7.2557,876.9667
+gpt-oss-20b/strict,4.96,5.0,5.0,1.0,1.0,1.0,0.4523,1055.9667
+gpt-oss-20b/basic,4.76,4.0333,4.96,1.0,0.0,0.0,3.0883,876.9667
