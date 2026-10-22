@@ -21,7 +21,11 @@ ENV_FILES = [ROOT / ".env", ROOT.parent / ".env"]
 KEY_ALIASES = {
     "GROQ_API_KEY": (["GROQ_API_KEY", "GROQ_KEY", "GROQ"], "gsk_"),
     "GEMINI_API_KEY": (["GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_KEY", "GEMINI", "GOOGLE_AI_API_KEY"], "AIza"),
+    # Langfuse (трассировка) — необязательные; ищутся только по имени и префиксу
+    "LANGFUSE_PUBLIC_KEY": (["LANGFUSE_PUBLIC_KEY"], "pk-lf-"),
+    "LANGFUSE_SECRET_KEY": (["LANGFUSE_SECRET_KEY"], "sk-lf-"),
 }
+OPTIONAL_KEYS = {"LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"}
 
 
 def load_config(path: str | Path | None = None, overrides: list[str] | None = None) -> dict[str, Any]:
@@ -83,6 +87,8 @@ def get_secret(name: str) -> str | None:
     for value in list(named.values()) + bare:
         if value.startswith(prefix):
             return value
+    if name in OPTIONAL_KEYS:                    # угадывать необязательные ключи нельзя: подхватим чужой
+        return None
     # имя переменной содержит слово-подсказку (GEMINI_TOKEN, MY_GOOGLE_KEY, ...)
     hints = {"GROQ_API_KEY": ("GROQ",), "GEMINI_API_KEY": ("GEMINI", "GOOGLE")}[name]
     for k, v in named.items():
@@ -101,7 +107,8 @@ def describe_secrets() -> dict[str, str]:
     out = {}
     for name in KEY_ALIASES:
         v = get_secret(name)
-        out[name] = f"найден ({v[:4]}…, длина {len(v)})" if v else "НЕ найден"
+        missing = "не задан (трассировка выключена)" if name in OPTIONAL_KEYS else "НЕ найден"
+        out[name] = f"найден ({v[:4]}…, длина {len(v)})" if v else missing
     named, bare = _read_env_files()
     out["переменные в .env"] = ", ".join(named) or "—"
     out["строк без имени"] = str(len(bare))

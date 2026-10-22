@@ -101,6 +101,8 @@ def _ask(cfg: dict, question: str, show_context: bool) -> None:
             print(f"  [{i}] dense={h.dense_score:.3f} rerank={h.rerank_score or 0:.3f}  {h.chunk.chunk_id}")
     print(f"\nфильтры: {res.filter_log}; время: "
           + ", ".join(f"{k}={v:.2f}s" for k, v in res.timings.items()))
+    if res.trace_url:
+        print(f"трасса Langfuse: {res.trace_url}")
 
 
 if __name__ == "__main__":

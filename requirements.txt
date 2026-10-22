@@ -17,6 +17,8 @@ numpy>=1.26
 # --- генерация: Groq и Gemini через OpenAI-совместимый HTTP API (requests) ---
 # --- интерфейс ---
 streamlit>=1.40
+# --- трассировка (необязательно, включается ключами в .env) ---
+langfuse>=3.0
 # --- evaluation / experiments / report ---
 matplotlib>=3.9
 python-docx>=1.1

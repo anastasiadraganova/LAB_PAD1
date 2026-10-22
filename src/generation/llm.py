@@ -18,6 +18,7 @@ from pathlib import Path
 
 import requests
 
+from src import tracing
 from src.config import get_secret
 
 log = logging.getLogger(__name__)
@@ -59,6 +60,16 @@ class LLM:
         return f"{self.provider}:{self.model}"
 
     def chat(self, messages: list[dict], use_cache: bool = True, json_mode: bool = False) -> LLMResponse:
+        """Запрос к LLM; в Langfuse пишется как generation (промпт, ответ, токены, кэш)."""
+        with tracing.observation(f"llm:{self.provider}", "generation", model=self.model, input=messages,
+                                 model_parameters={"temperature": self.temperature,
+                                                   "max_tokens": self.max_tokens, **self.extra}) as gen:
+            out = self._chat(messages, use_cache, json_mode)
+            gen.update(output=out.text, metadata={"cached": out.cached, "latency_sec": out.latency_sec},
+                       usage_details={"input": out.prompt_tokens, "output": out.completion_tokens})
+        return out
+
+    def _chat(self, messages: list[dict], use_cache: bool, json_mode: bool) -> LLMResponse:
         req = {"model": self.model, "messages": messages, "temperature": self.temperature,
                "max_tokens": self.max_tokens, **self.extra}
         if json_mode:

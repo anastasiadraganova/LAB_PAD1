@@ -16,3 +16,6 @@ data/*
 
 # настройки Claude Code
 .claude/
+
+# окружение pixi (пересоздаётся: pixi install)
+.pixi/

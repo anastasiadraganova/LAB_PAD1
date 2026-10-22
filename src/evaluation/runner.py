@@ -6,6 +6,7 @@ import time
 
 from tqdm import tqdm
 
+from src import tracing
 from src.evaluation import Question
 from src.evaluation.judge import judge_answer
 from src.evaluation.metrics import is_relevant, retrieval_metrics
@@ -58,12 +59,21 @@ def eval_generation(rag: RAGPipeline, questions: list[Question], llm, judge, cfg
     cfg = cfg or rag.cfg
     rows = []
     for q in tqdm(questions, desc=f"gen {tag}", unit="q"):
-        res = rag.retrieve(q.question, cfg)
-        t0 = time.perf_counter()
-        ans = generate(llm, cfg["generation"]["prompt"], q.question, res.final)
-        latency = time.perf_counter() - t0
-        scores = judge_answer(judge, q.question, q.expected_answer if q.answerable else REFUSAL,
-                              res.final, ans.text)
+        with tracing.observation("eval-question", "chain", input=q.question,
+                                 metadata={"id": q.id, "type": q.type, "expected": q.expected_answer}) as obs, \
+                tracing.trace_attributes(trace_name="eval-question", tags=["eval", tag, q.type],
+                                         session_id=f"eval:{tag}"):
+            res = rag.retrieve(q.question, cfg)
+            t0 = time.perf_counter()
+            ans = generate(llm, cfg["generation"]["prompt"], q.question, res.final)
+            latency = time.perf_counter() - t0
+            scores = judge_answer(judge, q.question, q.expected_answer if q.answerable else REFUSAL,
+                                  res.final, ans.text)
+            obs.update(output=ans.text, metadata={"refused": ans.refused})
+            for k in ("correctness", "faithfulness", "relevancy"):     # оценки судьи → scores трассы
+                if scores[k] is not None:
+                    obs.score_trace(name=k, value=float(scores[k]), comment=scores["comment"] or None)
+            obs.score_trace(name="refusal_correct", value=float(ans.refused != q.answerable))
         gold_ctx = any(is_relevant(h.chunk, q.gold) for h in res.final) if q.answerable else None
         rows.append({
             "tag": tag, "id": q.id, "type": q.type, "answerable": q.answerable,

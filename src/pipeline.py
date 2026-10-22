@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from src import config
+from src import config, tracing
 from src.embeddings import Embedder
 from src.filtering import FilterConfig, apply_filters
 from src.generation import Answer, build_llm, generate
@@ -38,6 +38,7 @@ class RetrievalResult:
     final: list[Hit]                   # после reranker'а → в LLM
     filter_log: dict
     timings: dict = field(default_factory=dict)
+    trace_url: str | None = None       # ссылка на трассу в Langfuse (если включён)
 
 
 class RAGPipeline:
@@ -60,28 +61,46 @@ class RAGPipeline:
         r, f, rr = cfg["retrieval"], cfg["filtering"], cfg["reranker"]
         t = {}
         t0 = time.perf_counter()
-        candidates = self.retriever.retrieve(question, r["top_k"], r.get("filters") or None)
+        with tracing.observation("retrieve", "retriever", input=question,
+                                 metadata={"mode": r["mode"], "top_k": r["top_k"],
+                                           "embedding": cfg["embedding"]["model"]}) as obs:
+            candidates = self.retriever.retrieve(question, r["top_k"], r.get("filters") or None)
+            obs.update(output=tracing.hits_summary(candidates))
         t["retrieve"] = time.perf_counter() - t0
 
         filtered, flog = apply_filters(list(candidates), FilterConfig(**f))
         t0 = time.perf_counter()
-        if rr["enabled"]:
-            final = self.reranker(rr["model"]).rerank(question, filtered, rr["top_n"])
-            if rr.get("min_score"):
-                before = len(final)
-                final = [h for h in final if h.rerank_score >= rr["min_score"]]
-                flog["rerank_threshold"] = before - len(final)
-        else:
-            final = filtered[:rr["top_n"]]
+        with tracing.observation("rerank", input={"candidates": len(filtered)},
+                                 metadata={"enabled": rr["enabled"], "model": rr["model"],
+                                           "top_n": rr["top_n"], "min_score": rr.get("min_score", 0)}) as obs:
+            if rr["enabled"]:
+                final = self.reranker(rr["model"]).rerank(question, filtered, rr["top_n"])
+                if rr.get("min_score"):
+                    before = len(final)
+                    final = [h for h in final if h.rerank_score >= rr["min_score"]]
+                    flog["rerank_threshold"] = before - len(final)
+            else:
+                final = filtered[:rr["top_n"]]
+            obs.update(output=tracing.hits_summary(final), metadata={"filters": flog})
         t["rerank"] = time.perf_counter() - t0
         return RetrievalResult(candidates, filtered, final, flog, t)
 
-    def ask(self, question: str, cfg: dict | None = None, llm=None) -> tuple[Answer, RetrievalResult]:
+    def ask(self, question: str, cfg: dict | None = None, llm=None,
+            session_id: str | None = None) -> tuple[Answer, RetrievalResult]:
         cfg = cfg or self.cfg
-        res = self.retrieve(question, cfg)
         llm = llm or self.llm
-        t0 = time.perf_counter()
-        answer = generate(llm, cfg["generation"]["prompt"], question, res.final) if res.final \
-            else Answer(REFUSAL, True)
-        res.timings["generate"] = time.perf_counter() - t0
+        g = cfg["generation"]
+        with tracing.observation("rag-ask", "chain", input=question) as root, \
+                tracing.trace_attributes(trace_name="rag-ask", session_id=session_id,
+                                         tags=[f"prompt:{g['prompt']}", g["model"]]):
+            res = self.retrieve(question, cfg)
+            t0 = time.perf_counter()
+            answer = generate(llm, g["prompt"], question, res.final) if res.final \
+                else Answer(REFUSAL, True)
+            res.timings["generate"] = time.perf_counter() - t0
+            root.update(output=answer.text, metadata={
+                "refused": answer.refused, "sources": answer.sources, "timings": res.timings,
+                "chunking": chunking_config(cfg).slug, "embedding": cfg["embedding"]["model"],
+                "reranker": cfg["reranker"]["model"] if cfg["reranker"]["enabled"] else None})
+            res.trace_url = tracing.current_trace_url()
         return answer, res

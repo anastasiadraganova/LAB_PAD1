@@ -1,0 +1,56 @@
+# Окружение pixi (альтернатива venv + pip): python из conda-forge, пакеты из PyPI через uv.
+#   pixi install          — создать окружение .pixi/ по pixi.lock
+#   pixi run app          — веб-интерфейс
+#   pixi run ask "вопрос" — вопрос из командной строки
+#   pixi task list        — все задачи
+[workspace]
+name = "rag-solar-system"
+description = "RAG-система «Солнечная система» по русской Википедии"
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64"]
+
+[dependencies]
+python = "3.13.*"
+
+[pypi-dependencies]
+# torch с CUDA 12.8 (RTX 50xx / Blackwell); без видеокарты работает на CPU, но колёса те же
+torch = { version = ">=2.7", index = "https://download.pytorch.org/whl/cu128" }
+# grabber / preprocessing
+requests = ">=2.32"
+tenacity = ">=9.0"
+beautifulsoup4 = ">=4.12"
+lxml = ">=5.0"
+pyyaml = ">=6.0"
+python-dotenv = ">=1.0"
+tqdm = ">=4.66"
+# embeddings / vector store / retrieval
+transformers = ">=4.44"
+qdrant-client = ">=1.12"
+rank-bm25 = ">=0.2.2"
+numpy = ">=1.26"
+# интерфейс и трассировка
+streamlit = ">=1.40"
+langfuse = ">=3.0"
+# evaluation / experiments / report
+matplotlib = ">=3.9"
+python-docx = ">=1.1"
+pytest = ">=8.0"
+
+[activation.env]
+PYTHONIOENCODING = "utf-8"
+# не подмешивать пакеты из %APPDATA%\Python\...\site-packages (там может лежать другой torch)
+PYTHONNOUSERSITE = "1"
+
+[tasks]
+check = "python -m src.cli check"
+grab = "python -m src.cli grab"
+stats = "python -m src.cli stats"
+index = "python -m src.cli index"
+ask = "python -m src.cli ask"
+app = "streamlit run app.py"
+test = "python -m pytest tests"
+check-dataset = "python experiments/check_dataset.py"
+retrieval = "python experiments/run_retrieval.py"
+generation = "python experiments/run_generation.py"
+figures = "python experiments/make_figures.py"
+docx = "python experiments/build_docx.py"

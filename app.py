@@ -5,10 +5,11 @@
 from __future__ import annotations
 
 import json
+import uuid
 
 import streamlit as st
 
-from src import config
+from src import config, tracing
 from src.config import merged
 from src.pipeline import RAGPipeline
 
@@ -35,6 +36,7 @@ with st.sidebar:
     top_k = st.slider("Кандидатов из индекса (Top-K)", 5, 20, rag.cfg["retrieval"]["top_k"])
     st.caption(f"chunking: {rag.cfg['chunking']['strategy']}-{rag.cfg['chunking']['size']}, "
                f"embeddings: {rag.cfg['embedding']['model']}, chunks: {len(rag.chunks)}")
+    st.caption("Langfuse: " + ("трассировка включена" if tracing.enabled() else "выключена (нет ключей в .env)"))
 
 st.title("🪐 Вопросы о Солнечной системе")
 st.caption("Ответы строятся только по статьям русской Википедии из базы знаний; источники — ссылками [n].")
@@ -44,8 +46,10 @@ if st.button("Спросить", type="primary") and question.strip():
     cfg = merged(rag.cfg, reranker={"enabled": use_rr}, retrieval={"top_k": top_k},
                  generation={"prompt": prompt, "model": model})
     from src.generation import build_llm
+    session = st.session_state.setdefault("session_id", f"ui-{uuid.uuid4().hex[:12]}")
     with st.spinner("Поиск и генерация…"):
-        answer, res = rag.ask(question, cfg, llm=build_llm(cfg))
+        answer, res = rag.ask(question, cfg, llm=build_llm(cfg), session_id=session)
+    tracing.flush()                                    # трасса сразу видна в Langfuse
 
     st.subheader("Ответ")
     (st.warning if answer.refused else st.success)(answer.text)
@@ -62,3 +66,5 @@ if st.button("Спросить", type="primary") and question.strip():
             st.text(h.chunk.text[:1200])
     st.caption(f"фильтры: {res.filter_log}; время: "
                + ", ".join(f"{k}={v:.2f} с" for k, v in res.timings.items()))
+    if res.trace_url:
+        st.markdown(f"[Трасса запроса в Langfuse]({res.trace_url})")
